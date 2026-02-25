@@ -1,0 +1,70 @@
+import datetime
+import os
+from faster_whisper import WhisperModel
+from moviepy import VideoFileClip
+from tqdm import tqdm
+import torch
+
+# --- CONFIGURAÇÕES ---
+# Verifique se a GPU está disponível e configure o dispositivo
+device = "cuda" if torch.cuda.is_available() else "cpu"
+compute_type = "float16" if torch.cuda.is_available() else "int8"
+
+tamanho_modelo = "large-v3"
+diretorio_videos = r"C:\Users\iebt\Videos"
+diretorio_saida = r"C:\Users\iebt\Videos\Transcricao"
+# -------------------
+
+# Cria o diretório de saída se ele não existir
+os.makedirs(diretorio_saida, exist_ok=True)
+
+print("Carregando o modelo Whisper... (Isso pode levar alguns minutos na primeira vez)")
+model = WhisperModel(tamanho_modelo, device=device, compute_type=compute_type)
+print("✅ Modelo carregado com sucesso!")
+
+# Lista todos os arquivos .mp4 no diretório de vídeos
+arquivos_mp4 = [f for f in os.listdir(diretorio_videos) if f.endswith('.mp4')]
+
+# Loop principal com a barra de progresso para ARQUIVOS
+for arquivo_mp4 in tqdm(arquivos_mp4, desc="Progresso Geral (Arquivos)"):
+    caminho_completo_video = os.path.join(diretorio_videos, arquivo_mp4)
+    caminho_temporario_audio = os.path.join(diretorio_saida, "temp_audio.wav")
+
+    # 1. Extrair áudio do vídeo
+    try:
+        video_clip = VideoFileClip(caminho_completo_video)
+        total_duration_seconds = video_clip.audio.duration
+        video_clip.audio.write_audiofile(caminho_temporario_audio, codec='pcm_s16le')
+        video_clip.close()
+    except Exception as e:
+        print(f"\nErro ao extrair áudio de {arquivo_mp4}: {e}")
+        continue
+
+    total_duration_formatted = datetime.timedelta(total_duration_seconds=int(total_duration_seconds))
+    # 2. Transcrever o áudio
+    # A função transcribe retorna um gerador de segmentos
+    segments, info = model.transcribe(caminho_temporario_audio, beam_size=5)
+
+    print(f"\nTranscrevendo arquivo: {arquivo_mp4} [Duração total: {total_duration_formatted}] ({info.language}, {info.language_probability:.2f})")
+
+    # Lista para armazenar os textos de cada segmento
+    linhas_transcritas = []
+    
+    # --- NOVA BARRA DE PROGRESSO INTERNA ---
+    # Envolvemos o gerador 'segments' com tqdm para ver o progresso por segmento
+    for segment in tqdm(segments, desc="Progresso no Arquivo Atual (Segmentos)", unit=" seg"):
+        linhas_transcritas.append(segment.text.strip())
+    # ----------------------------------------
+
+    # 3. Salvar a transcrição em um arquivo de texto
+    texto_completo = "\n".join(linhas_transcritas)
+    nome_arquivo_saida = os.path.splitext(arquivo_mp4)[0] + ".txt"
+    caminho_arquivo_saida = os.path.join(diretorio_saida, nome_arquivo_saida)
+
+    with open(caminho_arquivo_saida, 'w', encoding='utf-8') as f:
+        f.write(texto_completo)
+
+    # 4. Remover o arquivo de áudio temporário
+    os.remove(caminho_temporario_audio)
+
+print("\n�� Processo concluído! Todas as transcrições foram salvas.")
