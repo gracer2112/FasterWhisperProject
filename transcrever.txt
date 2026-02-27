@@ -1,4 +1,4 @@
-mport datetime
+import datetime
 import os
 from faster_whisper import WhisperModel
 from moviepy import VideoFileClip
@@ -40,19 +40,38 @@ for arquivo_mp4 in tqdm(arquivos_mp4, desc="Progresso Geral (Arquivos)"):
         print(f"\nErro ao extrair áudio de {arquivo_mp4}: {e}")
         continue
 
-    total_duration_formatted = datetime.timedelta(total_duration_seconds=int(total_duration_seconds))
+    total_duration_formatted = datetime.timedelta(seconds=int(total_duration_seconds))
     # 2. Transcrever o áudio
     # A função transcribe retorna um gerador de segmentos
-    segments, info = model.transcribe(caminho_temporario_audio, beam_size=5)
-
+    segments, info = model.transcribe(caminho_temporario_audio, beam_size=5,word_timestamps=True)
+    
+    print(f"Idioma detectado: '{info.language}' com probabilidade {info.language_probability:.2f}")
     print(f"\nTranscrevendo arquivo: {arquivo_mp4} [Duração total: {total_duration_formatted}] ({info.language}, {info.language_probability:.2f})")
 
     # Lista para armazenar os textos de cada segmento
     linhas_transcritas = []
-    
+
+    for segment in segments:
+        # Tempo de progresso atual (usando o final do segmento para uma percepção mais próxima do "passou")
+        progress_seconds = segment.end
+        progress_formatted = datetime.timedelta(seconds=int(progress_seconds))
+
+        # Cálculo da porcentagem
+        progress_percentage = (progress_seconds / total_duration_seconds) * 100           
+
     # --- NOVA BARRA DE PROGRESSO INTERNA ---
     # Envolvemos o gerador 'segments' com tqdm para ver o progresso por segmento
-    for segment in tqdm(segments, desc="Progresso no Arquivo Atual (Segmentos)", unit=" seg"):
+    #for segment in tqdm(segments, desc="Progresso no Arquivo Atual (Segmentos)", unit=" seg"):
+
+        # Monta a linha de progresso
+        progress_line = (
+            f"Progresso: {progress_formatted} / {total_duration_formatted} "
+            f"({progress_percentage:.2f}%)"
+        )
+
+        # Monta a linha do segmento
+        segment_line = f"Segmento: [{segment.start:.2f}s -> {segment.end:.2f}s]"
+        print(f"{progress_line} | {segment_line}")
         linhas_transcritas.append(segment.text.strip())
     # ----------------------------------------
 

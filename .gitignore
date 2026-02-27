@@ -15,4 +15,4 @@ venv/
 .vscode/
 
 # Ignore Misc Files
-.txt
+transcrever.txt
